@@ -1,0 +1,16 @@
+<!doctype html>
+{% if filename %}
+	<div>
+		<img src="{{ url_for('display_image', filename=filename) }}">
+	</div>
+{% endif %}
+
+{% if filter_image_name %}
+	<div>
+		<img src="{{ url_for('display_image', filename=filter_image_name) }}">
+	</div>
+{% endif %}
+
+
+
+{{my_name}}
