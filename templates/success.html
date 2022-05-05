@@ -1,16 +1,38 @@
 <!doctype html>
+<head>
+	<style>
+	* {
+	  box-sizing: border-box;
+	}
+	
+	.column {
+	  float: left;
+	  width: 33.33%;
+	  padding: 5px;
+	}
+	
+	/* Clearfix (clear floats) */
+	.row::after {
+	  content: "";
+	  clear: both;
+	  display: table;
+	}
+	</style>
+</head>
+<div class="row">
 {% if filename %}
-	<div>
+	<div class="column">
 		<img src="{{ url_for('display_image', filename=filename) }}">
 	</div>
 {% endif %}
 
 {% if filter_image_name %}
-	<div>
+	<div class = "column">
 		<img src="{{ url_for('display_image', filename=filter_image_name) }}">
 	</div>
 {% endif %}
-
-
-
+</div>
 {{my_name}}
+
+<br>
+<a href="/"><button class='btn btn-default'>Home</button></a>

@@ -14,6 +14,121 @@ ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 def success():
 	return render_template('success.html', filename=request.args.get('filename'), my_name = request.args.get('my_name'), filter_image_name = request.args.get('filter_image_name'))
 
+def distance(location_1, location_2):
+	return math.sqrt((location_1[0] - location_2[0]) ** 2 + (location_1[1] - location_2[1]) **2)
+
+def idealFilterLP(dist, imgShape):
+    base = np.zeros(imgShape[:2])
+    rows, cols = imgShape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            if distance((y, x), center) < dist:
+                base[y, x] = 1
+    return base
+
+def idealFilterHP(dist, imgShape):
+    base = np.ones(imgShape[:2])
+    rows, cols = imgShape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            if distance((y, x), center) < dist:
+                base[y, x] = 0
+    return base
+
+def butterworthLP(dist, imgShape, n):
+    base = np.zeros(imgShape[:2])
+    rows, cols = imgShape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            base[y, x] = 1 / (1 + (distance((y, x), center) / dist) ** (2 * n))
+    return base
+
+def butterworthHP(dist, imgShape, n):
+    base = np.zeros(imgShape[:2])
+    rows, cols = imgShape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            base[y, x] = 1 - 1 / (1 + (distance((y, x), center) / dist) ** (2 * n))
+    return base
+
+def gaussianLP(dist, imgShape):
+	base = np.zeros(imgShape[:2])
+	rows, cols = imgShape[:2]
+	center = (rows / 2, cols / 2)
+	for x in range(cols):
+		for y in range(rows):
+			base[y, x] = math.exp(((-distance((y, x), center) ** 2) / (2 * (dist ** 2))))
+	return base
+
+def gaussianHP(dist, imgShape):
+    base = np.zeros(imgShape[:2])
+    rows, cols = imgShape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            base[y, x] = 1 - math.exp(((-distance((y, x), center) ** 2) / (2 * (dist ** 2))))
+    return base
+
+def calculatedft(my_name, image):
+
+	#gaussian_noise_image = add_gaussian_noise(image)
+
+	rowLength = image.shape[0]
+	colLength = image.shape[1]
+
+	result = np.zeros((rowLength, colLength), dtype=complex)
+	fft_result = np.fft.fft2(image)
+	fft_shift_result = np.fft.fftshift(fft_result)
+
+	#magnitude_spectrum_dft = 20*np.log(np.abs(fft_shift_result))
+	
+    #magnitude_spectrum_dft = self.post_process_image(magnitude_spectrum_dft)
+
+	if my_name == "gaussian_low_pass_filter":
+		mask_result = gaussianLP(50,image.shape)
+	elif my_name == "gaussian_high_pass_filter":
+		mask_result = gaussianHP(50,image.shape)
+	elif my_name == "ideal_low_pass_filter":
+		mask_result = idealFilterLP(50,image.shape)
+	elif my_name == "ideal_high_pass_filter":
+		mask_result = idealFilterHP(50,image.shape)
+	elif my_name == "butter_worth_low_pass_filter":
+		mask_result = butterworthLP(50,image.shape, 1)
+	elif my_name == "butter_worth_high_pass_filter":
+		mask_result = butterworthHP(50,image.shape, 1)
+
+	#mask_result = magnitude_spectrum_dft * gaussianLP(200,image.shape)
+
+    #mask_result = self.get_mask(self.image.shape, magnitude_spectrum_dft)
+
+	#magnitude_spectrum_filtered_dft = magnitude_spectrum_dft*mask_result
+	#magnitude_spectrum_filtered_dft = self.post_process_image(magnitude_spectrum_filtered_dft)
+        
+	# notch_masking_result = fft_shift_result * mask_result
+
+	# magnitude_spectrum_filtered_dft = 2000 * np.log(np.abs(notch_masking_result))
+
+	# inverse_fft_shift = np.fft.ifftshift(magnitude_spectrum_filtered_dft)
+	# inverse_fft = np.fft.ifft2(inverse_fft_shift)
+
+	# filtered_image = np.abs(inverse_fft)
+
+	#fshift_mask_mag = 2000 * np.log(cv2.magnitude(mask_result[:, :, 0], mask_result[:, :, 1]))
+	print(fft_shift_result.shape, mask_result.shape)
+	multiple_result = fft_shift_result * mask_result
+
+	f_ishift = np.fft.ifftshift(multiple_result)
+	filtered_image = np.fft.ifft2(f_ishift)
+	filtered_image_new = 200*np.abs(filtered_image)
+
+	#filtered_image = self.post_process_image(filtered_image)
+
+	return filtered_image_new
+
 def rotate_filter(filter):
 	rows = filter.shape[0]
 	cols = filter.shape[1]
@@ -71,6 +186,19 @@ def calculate_gaussian(npimg):
 
 	return output_array
 
+def add_gaussian_noise(image, mean=0, std=1):
+	"""
+	Args:
+    image : numpy array of image
+    mean : pixel mean of image
+    standard deviation : pixel standard deviation of image
+    Return :
+    image : numpy array of image with gaussian noise added
+    """
+	noise = np.random.normal(0, .1, image.shape)
+	new_signal = image + noise
+	return new_signal
+
 def allowed_file(filename):
 	return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 	
@@ -99,10 +227,14 @@ def upload_image():
 
 		npimg = image.imread("static/uploads/" + file.filename)
 
-		result_array = calculate_gaussian(npimg)
+		#gaussian_result = calculate_gaussian(npimg)
+
+		result_array = calculatedft(my_name, npimg)
+
+		# result_array = calculate_gaussian(npimg)
 
 		output_dir = 'static/uploads/'
-		filter_image_name = "result_gaussian.jpg"
+		filter_image_name = my_name + "_result.jpg"
 		output_image_name = output_dir  + filter_image_name
 		cv2.imwrite(output_image_name, result_array)
 
@@ -117,9 +249,9 @@ def upload_image():
 def display_image(filename):
 	return redirect(url_for('static', filename='uploads/' + filename), code=301)
 
-@app.route('/download')
-def download():
-   return send_file('static/uploads/result_gaussian.jpg', as_attachment=True)
+# @app.route('/download')
+# def download():
+#    return send_file('static/uploads/result_gaussian.jpg', as_attachment=True)
 
 if __name__ == "__main__":
     app.run()
