@@ -1,257 +1,291 @@
-import os
-from app import app
-import urllib.request
-from flask import Flask, flash, request, redirect, url_for, render_template, send_file
-from werkzeug.utils import secure_filename
+
+from streamlit_drawable_canvas import st_canvas
+from manual_editing.manual_edit import save_img_fft, save_fft_edits, get_mask_from_edits, masking
 import numpy as np
-import math
 import cv2
-from matplotlib import image
+import streamlit as st
+from PIL import Image
+from fourier_transform.fourier import color_fft, color_ifft, fft2, ifft2, post_process_image, get_magnitude
+from automated_filtering.automated_filter import gaussian_low_pass_filter, gaussian_high_pass_filter, idealFilter_low_pass_filter, \
+    idealFilter_high_pass_filter, butterworth_low_pass_filter, butterworth_high_pass_filter
 
-ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+st.set_page_config(layout="wide")
+drawing_mode = st.sidebar.selectbox(
+    "Drawing tool:",
+    ("freedraw", "line", "rect", "circle", "transform", "polygon", "point"),
+)
+stroke_width = st.sidebar.slider("Stroke width: ", 1, 25, 3)
+if drawing_mode == 'freedraw':
+    point_display_radius = st.sidebar.slider("Point display radius: ", 1, 25, 3)
+stroke_color = st.sidebar.color_picker("Stroke color hex: ")
+bg_color = st.sidebar.color_picker("Background color hex: ", "#eee")
+bg_image = st.sidebar.file_uploader("Background image:", type=["png", "jpg", "jpeg"])
+realtime_update = st.sidebar.checkbox("Update in realtime", True)
 
-@app.route('/success')
-def success():
-	return render_template('success.html', filename=request.args.get('filename'), my_name = request.args.get('my_name'), filter_image_name = request.args.get('filter_image_name'))
 
-def distance(location_1, location_2):
-	return math.sqrt((location_1[0] - location_2[0]) ** 2 + (location_1[1] - location_2[1]) **2)
 
-def idealFilterLP(dist, imgShape):
-    base = np.zeros(imgShape[:2])
-    rows, cols = imgShape[:2]
-    center = (rows / 2, cols / 2)
-    for x in range(cols):
-        for y in range(rows):
-            if distance((y, x), center) < dist:
-                base[y, x] = 1
-    return base
 
-def idealFilterHP(dist, imgShape):
-    base = np.ones(imgShape[:2])
-    rows, cols = imgShape[:2]
-    center = (rows / 2, cols / 2)
-    for x in range(cols):
-        for y in range(rows):
-            if distance((y, x), center) < dist:
-                base[y, x] = 0
-    return base
+def manual():
+    st.title("Manual Filtering")
 
-def butterworthLP(dist, imgShape, n):
-    base = np.zeros(imgShape[:2])
-    rows, cols = imgShape[:2]
-    center = (rows / 2, cols / 2)
-    for x in range(cols):
-        for y in range(rows):
-            base[y, x] = 1 / (1 + (distance((y, x), center) / dist) ** (2 * n))
-    return base
+    if bg_image is not None:
+        with st.form(key = "form"):
+            isColor = False
 
-def butterworthHP(dist, imgShape, n):
-    base = np.zeros(imgShape[:2])
-    rows, cols = imgShape[:2]
-    center = (rows / 2, cols / 2)
-    for x in range(cols):
-        for y in range(rows):
-            base[y, x] = 1 - 1 / (1 + (distance((y, x), center) / dist) ** (2 * n))
-    return base
+            image = Image.open(bg_image)
+            image = image.resize((256, 256))
+            image_arr = np.array(image)
 
-def gaussianLP(dist, imgShape):
-	base = np.zeros(imgShape[:2])
-	rows, cols = imgShape[:2]
-	center = (rows / 2, cols / 2)
-	for x in range(cols):
-		for y in range(rows):
-			base[y, x] = math.exp(((-distance((y, x), center) ** 2) / (2 * (dist ** 2))))
-	return base
+            if len(image_arr.shape) == 3:
+                isColor = True
 
-def gaussianHP(dist, imgShape):
-    base = np.zeros(imgShape[:2])
-    rows, cols = imgShape[:2]
-    center = (rows / 2, cols / 2)
-    for x in range(cols):
-        for y in range(rows):
-            base[y, x] = 1 - math.exp(((-distance((y, x), center) ** 2) / (2 * (dist ** 2))))
-    return base
+            col1, col2, col3 = st.columns(3)
 
-def calculatedft(my_name, image):
+            with col1:
+                st.text("")
 
-	#gaussian_noise_image = add_gaussian_noise(image)
+            with col2:
+                st.image(image_arr, use_column_width=False)
 
-	rowLength = image.shape[0]
-	colLength = image.shape[1]
+            with col3:
+                st.text("")
 
-	result = np.zeros((rowLength, colLength), dtype=complex)
-	fft_result = np.fft.fft2(image)
-	fft_shift_result = np.fft.fftshift(fft_result)
+            image_fft = color_fft(image_arr, isColor)
 
-	#magnitude_spectrum_dft = 20*np.log(np.abs(fft_shift_result))
-	
-    #magnitude_spectrum_dft = self.post_process_image(magnitude_spectrum_dft)
+            if isColor:
+                fft_names = ["img_fft_r.png", "img_fft_g.png", "img_fft_b.png"]
+            else:
+                fft_names = ["img_fft.png"]
 
-	if my_name == "gaussian_low_pass_filter":
-		mask_result = gaussianLP(50,image.shape)
-	elif my_name == "gaussian_high_pass_filter":
-		mask_result = gaussianHP(50,image.shape)
-	elif my_name == "ideal_low_pass_filter":
-		mask_result = idealFilterLP(50,image.shape)
-	elif my_name == "ideal_high_pass_filter":
-		mask_result = idealFilterHP(50,image.shape)
-	elif my_name == "butter_worth_low_pass_filter":
-		mask_result = butterworthLP(50,image.shape, 1)
-	elif my_name == "butter_worth_high_pass_filter":
-		mask_result = butterworthHP(50,image.shape, 1)
+            save_img_fft(image_fft, fft_names)
 
-	#mask_result = magnitude_spectrum_dft * gaussianLP(200,image.shape)
+            # show fft on screen
+            if isColor:
+                col1, col2, col3 = st.columns(3)
 
-    #mask_result = self.get_mask(self.image.shape, magnitude_spectrum_dft)
+                with col1:
+                    st.text("Red Channel: ")
+                    edited_img_r = create_canvas(fft_names[0], 'r', image_arr.shape[0], image_arr.shape[1])
+                with col2:
+                    st.text("Green Channel: ")
+                    edited_img_g = create_canvas(fft_names[1], 'g', image_arr.shape[0], image_arr.shape[1])
+                with col3:
+                    st.text("Blue Channel: ")
+                    edited_img_b = create_canvas(fft_names[2], 'b', image_arr.shape[0], image_arr.shape[1])
+            else:
+                col1, col2, col3 = st.columns(3)
 
-	#magnitude_spectrum_filtered_dft = magnitude_spectrum_dft*mask_result
-	#magnitude_spectrum_filtered_dft = self.post_process_image(magnitude_spectrum_filtered_dft)
-        
-	# notch_masking_result = fft_shift_result * mask_result
+                with col1:
+                    st.text("")
+                with col2:
+                    st.text("FFT of Image: ")
+                    edited_img_w = create_canvas(fft_names[0], 'w', image_arr.shape[0], image_arr.shape[1])
+                with col3:
+                    st.text("")
 
-	# magnitude_spectrum_filtered_dft = 2000 * np.log(np.abs(notch_masking_result))
+            if st.form_submit_button("Find Inverse Fourier Transform: "):
+                if isColor:
+                    edited_img = [edited_img_r.image_data, edited_img_g.image_data, edited_img_b.image_data]
+                    edited_img_names = ["edited_img_r.png", "edited_img_g.png", "edited_img_b.png"]
+                else:
+                    edited_img = [edited_img_w.image_data]
+                    edited_img_names = ["edited_img_w.png"]
 
-	# inverse_fft_shift = np.fft.ifftshift(magnitude_spectrum_filtered_dft)
-	# inverse_fft = np.fft.ifft2(inverse_fft_shift)
+                # save fft edits
+                save_fft_edits(edited_img, edited_img_names)
 
-	# filtered_image = np.abs(inverse_fft)
+                # get the edits
+                fft_edits = []
+                for i in range(len(edited_img_names)):
+                    fft_edits.append(cv2.imread(edited_img_names[i], -1))
 
-	#fshift_mask_mag = 2000 * np.log(cv2.magnitude(mask_result[:, :, 0], mask_result[:, :, 1]))
-	print(fft_shift_result.shape, mask_result.shape)
-	multiple_result = fft_shift_result * mask_result
+                # get mask
+                masks = get_mask_from_edits(fft_edits)
 
-	f_ishift = np.fft.ifftshift(multiple_result)
-	filtered_image = np.fft.ifft2(f_ishift)
-	filtered_image_new = 200*np.abs(filtered_image)
+                # apply masks
+                masked_img = masking(image_fft, masks)
 
-	#filtered_image = self.post_process_image(filtered_image)
+                # apply inverse tranform
+                inverse_tranform_img = color_ifft(masked_img, isColor)
+                cv2.imwrite("inverse_tranform_img.png", inverse_tranform_img)
+                col1, col2, col3 = st.columns(3)
 
-	return filtered_image_new
+                with col1:
+                    st.text("")
 
-def rotate_filter(filter):
-	rows = filter.shape[0]
-	cols = filter.shape[1]
-	rotated_filter = np.zeros((rows, rows))
+                with col2:
+                    st.image(inverse_tranform_img, use_column_width=False)
 
-	for i in range(0, rows):
-		for j in range(0, cols):
-			rotated_filter[i, rows-1-j] = filter[rows-1-i, j]
+                with col3:
+                    st.text("")
 
-	return rotated_filter
 
-def get_gaussian_filter():
-    """Initialzes/Computes and returns a 5X5 Gaussian filter"""
-    gaussianFilter = np.zeros((5, 5), dtype=float)
-    sigma = 1.4
 
-    for i in range(-2,3):
-        for j in range(-2,3):
-            gaussianFilter[i+2][j+2] = ((1) / (2 * np.pi * math.pow(sigma, 2))) * (np.exp(- (((i**2) + (j**2)) / (2 * math.pow(sigma, 2)))))
 
-    sum = 0.0
-    for i in range(0,5):
-        for j in range(0,5):
-            sum = sum + gaussianFilter[i][j]
+def create_canvas(background_image, key, height, width):
 
-    for i in range(0,5):
-        for j in range(0,5):
-            gaussianFilter[i][j] = (gaussianFilter[i][j]) / sum
+    canvas_result = st_canvas(
+        fill_color="rgba(0, 0, 0, 1)",
+        stroke_width=stroke_width,
+        stroke_color=stroke_color,
+        background_color=bg_color,
+        background_image=Image.open(background_image),
+        update_streamlit=realtime_update,
+        height=height,
+        width=width,
+        drawing_mode=drawing_mode,
+        point_display_radius=point_display_radius if drawing_mode == 'point' else 0,
+        key=key,
+    )
 
-    return gaussianFilter
-	
-def calculate_gaussian(npimg):
-	output_array = np.zeros(npimg.shape)
-	guassianFilter = get_gaussian_filter()
+    return canvas_result
 
-	rotatedFilter = rotate_filter(guassianFilter)
 
-	image_rows, image_cols = npimg.shape[0], npimg.shape[1]
-	filter_rows, filter_cols = rotatedFilter.shape
+def automated():
+    st.title("Automated Filtering")
 
-	padding_rows = int((filter_rows - 1) / 2)
-	padding_cols = int((filter_cols - 1) / 2)
+    if bg_image is not None:
+        with st.form(key="form"):
+            isColor = False
 
-	padded_image = np.zeros((image_rows + (2 * padding_rows), image_cols + (2 * padding_cols)))
+            image = Image.open(bg_image)
+            image = image.resize((256, 256))
+            image_arr = np.array(image)
 
-	padded_image[padding_rows:padded_image.shape[0] - padding_rows, padding_cols:padded_image.shape[1] - padding_cols] = npimg
+            print("image size: " + str(image_arr.shape))
+            if len(image_arr.shape) == 3:
+                isColor = True
 
-	for row in range(image_rows):
-		for col in range(image_cols):
-			sum = 0
-			for i in range(0, filter_rows):
-				for j in range(0, filter_cols):
-					sum = sum + (rotatedFilter[i][j] * padded_image[row+i][col+j])
-			output_array[row,col] = sum
+            col1, col2, col3 = st.columns(3)
 
-	return output_array
+            with col1:
+                st.text("")
 
-def add_gaussian_noise(image, mean=0, std=1):
-	"""
-	Args:
-    image : numpy array of image
-    mean : pixel mean of image
-    standard deviation : pixel standard deviation of image
-    Return :
-    image : numpy array of image with gaussian noise added
-    """
-	noise = np.random.normal(0, .1, image.shape)
-	new_signal = image + noise
-	return new_signal
+            with col2:
+                st.image(image_arr, use_column_width=False)
 
-def allowed_file(filename):
-	return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-	
-@app.route('/')
-def upload_form():
-	return render_template('upload.html')
+            with col3:
+                st.text("")
 
-@app.route('/', methods=['POST'])
-def upload_image():
+            filter_option = st.selectbox('Which filter would you like to use?',
+                                         ('Gaussian Low Pass Filter',
+                                          'Gaussian High Pass Filter',
+                                          'Ideal Low Pass Filter',
+                                          'Ideal High Pass Filter',
+                                          'Butter Worth Low Pass Filter',
+                                          'Butter Worth High Pass Filter'))
 
-	my_name = request.form.get("filters")
-	print(my_name)
+            if isColor:
+                fft_names = ["img_fft_r.png", "img_fft_g.png", "img_fft_b.png"]
+            else:
+                fft_names = ["img_fft.png"]
 
-	if 'file' not in request.files:
-		flash('No file part')
-		return redirect(request.url)
-	file = request.files['file']
+            if st.form_submit_button("Perform Filter"):
+                #if isColor:
+                print("color: "+str(isColor))
+                if filter_option == "Gaussian Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(0, 3):
+                            mask_result.append(gaussian_low_pass_filter(50, image_arr[:, :, i].shape))
+                    else:
+                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
+                if filter_option == "Gaussian High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(gaussian_high_pass_filter(50, image_arr[:, :, i].shape))
+                    else:
+                        mask_result = gaussian_high_pass_filter(50, image_arr.shape)
+                elif filter_option == "Ideal Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(idealFilter_low_pass_filter(50, image_arr[:, :, i].shape))
+                    else:
+                        mask_result = idealFilter_low_pass_filter(50, image_arr.shape)
+                elif filter_option == "Ideal High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(idealFilter_high_pass_filter(50, image_arr[:, :, i].shape))
+                    else:
+                        mask_result = idealFilter_high_pass_filter(50, image_arr.shape)
+                elif filter_option == "Butter Worth Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(butterworth_low_pass_filter(50, image_arr[:, :, i].shape, 1))
+                    else:
+                        mask_result = butterworth_low_pass_filter(50, image_arr.shape, 1)
+                elif filter_option == "Butter Worth High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(butterworth_high_pass_filter(50, image_arr[:, :, i].shape, 1))
+                    else:
+                        mask_result = butterworth_high_pass_filter(50, image_arr.shape, 1)
+                else:
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(gaussian_low_pass_filter(50, image_arr[:, :, i].shape))
+                    else:
+                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
 
-	if file.filename == '':
-		flash('No image selected for uploading')
-		return redirect(request.url)
-	if file and allowed_file(file.filename):
-		filename = secure_filename(file.filename)
-		file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-		flash('Image successfully uploaded and displayed below')
+                color_image_fft = 0
+                image_fft = 0
+                fft_img = 0
 
-		npimg = image.imread("static/uploads/" + file.filename)
+                if isColor:
+                    color_image_fft = color_fft(image_arr, isColor)
+                    images_fft = []
+                    for i in range(3):
+                        fft_img_new = color_image_fft[i] * mask_result[i]
+                        images_fft.append(fft_img_new)
 
-		#gaussian_result = calculate_gaussian(npimg)
+                    fft_img = color_ifft(images_fft, isColor)
+                else:
+                    image_fft = fft2(image_arr)
+                    multiple_result = image_fft * mask_result
+                    inverse_tranform_img = ifft2(multiple_result)
+                    fft_img = get_magnitude(inverse_tranform_img)
+                    fft_img = post_process_image(fft_img)
 
-		result_array = calculatedft(my_name, npimg)
+                print("tranformed: " + str(fft_img))
+                print("tranformed shape: " + str(fft_img.shape))
+                cv2.imwrite("inverse_tranform_img.png", fft_img)
 
-		# result_array = calculate_gaussian(npimg)
+                col1, col2, col3 = st.columns(3)
 
-		output_dir = 'static/uploads/'
-		filter_image_name = my_name + "_result.jpg"
-		output_image_name = output_dir  + filter_image_name
-		cv2.imwrite(output_image_name, result_array)
+                with col1:
+                    st.text("")
 
-		#return send_file('static/uploads/result_gaussian.jpg', as_attachment=True)
-		return redirect(url_for('success',filename=filename, my_name = my_name, filter_image_name = filter_image_name))
-		#return render_template('upload.html', filename=filename, my_name = my_name, filter_image_name = filter_image_name)
-	else:
-		flash('Allowed image types are -> png, jpg, jpeg')
-		return redirect(request.url)
+                with col2:
+                    st.image(fft_img.astype('int'), use_column_width=False)
 
-@app.route('/display/<filename>')
-def display_image(filename):
-	return redirect(url_for('static', filename='uploads/' + filename), code=301)
+                with col3:
+                    st.text("")
 
-# @app.route('/download')
-# def download():
-#    return send_file('static/uploads/result_gaussian.jpg', as_attachment=True)
+
+
+
+def main():
+    if "button_id" not in st.session_state:
+        st.session_state["button_id"] = ""
+    if "color_to_label" not in st.session_state:
+        st.session_state["color_to_label"] = {}
+    PAGES = {
+        "Using Filter (Automated)": automated,
+        "Edit the frequency (Manually)": manual,
+    }
+    page = st.sidebar.selectbox("Page:", options=list(PAGES.keys()))
+    PAGES[page]()
+
+    with st.sidebar:
+        st.markdown("---")
+
 
 if __name__ == "__main__":
-    app.run()
+    st.sidebar.subheader("Configuration")
+    main()
