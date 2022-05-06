@@ -23,8 +23,6 @@ bg_image = st.sidebar.file_uploader("Background image:", type=["png", "jpg", "jp
 realtime_update = st.sidebar.checkbox("Update in realtime", True)
 
 
-
-
 def manual():
     st.title("Manual Filtering")
 
@@ -119,9 +117,6 @@ def manual():
                 with col3:
                     st.text("")
 
-
-
-
 def create_canvas(background_image, key, height, width):
 
     canvas_result = st_canvas(
@@ -139,7 +134,6 @@ def create_canvas(background_image, key, height, width):
     )
 
     return canvas_result
-
 
 def automated():
     st.title("Automated Filtering")
@@ -175,14 +169,7 @@ def automated():
                                           'Butter Worth Low Pass Filter',
                                           'Butter Worth High Pass Filter'))
 
-            if isColor:
-                fft_names = ["img_fft_r.png", "img_fft_g.png", "img_fft_b.png"]
-            else:
-                fft_names = ["img_fft.png"]
-
             if st.form_submit_button("Perform Filter"):
-                #if isColor:
-                print("color: "+str(isColor))
                 if filter_option == "Gaussian Low Pass Filter":
                     if isColor:
                         mask_result = []
@@ -190,7 +177,7 @@ def automated():
                             mask_result.append(gaussian_low_pass_filter(50, image_arr[:, :, i].shape))
                     else:
                         mask_result = gaussian_low_pass_filter(50, image_arr.shape)
-                if filter_option == "Gaussian High Pass Filter":
+                elif filter_option == "Gaussian High Pass Filter":
                     if isColor:
                         mask_result = []
                         for i in range(3):
@@ -239,36 +226,93 @@ def automated():
 
                 if isColor:
                     color_image_fft = color_fft(image_arr, isColor)
+                    fft_names = ["img_fft_r.png", "img_fft_g.png", "img_fft_b.png"]
+                    fft_names_after = ["after_img_fft_r.png", "after_img_fft_g.png", "after_img_fft_b.png"]
+
+                    save_img_fft(color_image_fft, fft_names)
+
                     images_fft = []
                     for i in range(3):
                         fft_img_new = color_image_fft[i] * mask_result[i]
                         images_fft.append(fft_img_new)
 
+                    save_img_fft(images_fft, fft_names_after)
                     fft_img = color_ifft(images_fft, isColor)
+
+                    cv2.imwrite("inverse_tranform_img.png", fft_img)
+
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.text("Before Filter Red FFT")
+                        st.image(cv2.imread(fft_names[0]), use_column_width=False)
+
+                    with col2:
+                        st.text("Before Filter Green FFT")
+                        st.image(cv2.imread(fft_names[1]), use_column_width=False)
+
+                    with col3:
+                        st.text("Before Filter Blue FFT")
+                        st.image(cv2.imread(fft_names[2]), use_column_width=False)
+
+                    col1_after_filter, col2_after_filter, col3_filter = st.columns(3)
+
+                    with col1_after_filter:
+                        st.text("After Filter Red FFT")
+                        st.image(cv2.imread(fft_names_after[0]), use_column_width=False)
+
+                    with col2_after_filter:
+                        st.text("After Filter Green FFT")
+                        st.image(cv2.imread(fft_names_after[1]), use_column_width=False)
+
+                    with col3_filter:
+                        st.text("After Filter Blue FFT")
+                        st.image(cv2.imread(fft_names_after[2]), use_column_width=False)
+
+                    col1_final_image, col2_final_image, col3_final_image = st.columns(3)
+
+                    with col1_final_image:
+                        st.text("")
+
+                    with col2_final_image:
+                        st.text("Filtered Image")
+                        st.image(fft_img.astype('int'), use_column_width=False)
+
+                    with col3_final_image:
+                        st.text("")
+
                 else:
                     image_fft = fft2(image_arr)
+                    image_fft_list = list()
+                    image_fft_list.append(image_fft)
+                    fft_names = ["img_fft.png"]
+                    after_fft_names = ["after_filter_fft.png"]
+                    save_img_fft(image_fft_list, fft_names)
                     multiple_result = image_fft * mask_result
+
+                    after_filter_fft = list()
+                    after_filter_fft.append(multiple_result)
+                    save_img_fft(after_filter_fft, after_fft_names)
+
                     inverse_tranform_img = ifft2(multiple_result)
                     fft_img = get_magnitude(inverse_tranform_img)
                     fft_img = post_process_image(fft_img)
 
-                print("tranformed: " + str(fft_img))
-                print("tranformed shape: " + str(fft_img.shape))
-                cv2.imwrite("inverse_tranform_img.png", fft_img)
+                    cv2.imwrite("inverse_tranform_img.png", fft_img)
 
-                col1, col2, col3 = st.columns(3)
+                    col1, col2, col3 = st.columns(3)
 
-                with col1:
-                    st.text("")
+                    with col1:
+                        st.text("Before Filter FFT")
+                        st.image(cv2.imread("img_fft.png"), use_column_width=False)
 
-                with col2:
-                    st.image(fft_img.astype('int'), use_column_width=False)
-
-                with col3:
-                    st.text("")
-
-
-
+                    with col2:
+                        st.text("After Filter FFT")
+                        st.image(cv2.imread("after_filter_fft.png"), use_column_width=False)
+                        
+                    with col3:
+                        st.text("Filtered Image")
+                        st.image(fft_img.astype('int'), use_column_width=False)
 
 def main():
     if "button_id" not in st.session_state:
@@ -284,7 +328,6 @@ def main():
 
     with st.sidebar:
         st.markdown("---")
-
 
 if __name__ == "__main__":
     st.sidebar.subheader("Configuration")
