@@ -37,7 +37,7 @@ def main():
     if "color_to_label" not in st.session_state:
         st.session_state["color_to_label"] = {}
     PAGES = {
-        "Using Filter (Automated)": automated,
+        "Using Filter (Automated)": automated_filtering,
         "Edit the frequency (Manually)": manual,
     }
     page = st.sidebar.selectbox("Page:", options=list(PAGES.keys()))
@@ -46,9 +46,9 @@ def main():
     with st.sidebar:
         st.markdown("---")
 
-
 def manual():
-    st.sidebar.header("Configuration")
+    st.title("Manual Filtering")
+    #st.sidebar.header("Configuration")
 
     if bg_image is not None:
         with st.form(key = "form"):
@@ -107,7 +107,6 @@ def manual():
                 with col3:
                     st.text("")
 
-
             if st.form_submit_button("Find Inverse Fourier Transform: "):
                 if isColor:
                     edited_img = [canvas_r.image_data, canvas_g.image_data, canvas_b.image_data]
@@ -146,34 +145,189 @@ def manual():
                 with col3:
                     st.text("")
 
+def calculate_distance(location_1, location_2):
+	return math.sqrt((location_1[0] - location_2[0]) ** 2 + (location_1[1] - location_2[1]) **2)
 
+def gaussian_low_pass_filter(dist, image_shape):
+	result = np.zeros(image_shape[:2])
+	rows, cols = image_shape[:2]
+	center = (rows / 2, cols / 2)
+	for x in range(cols):
+		for y in range(rows):
+			result[y, x] = math.exp(((-calculate_distance((y, x), center) ** 2) / (2 * (dist ** 2))))
+	return result
 
+def gaussian_high_pass_filter(dist, image_shape):
+    result = np.zeros(image_shape[:2])
+    rows, cols = image_shape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            result[y, x] = 1 - math.exp(((-calculate_distance((y, x), center) ** 2) / (2 * (dist ** 2))))
+    return result
 
+def idealFilter_low_pass_filter(dist, image_shape):
+    result = np.zeros(image_shape[:2])
+    rows, cols = image_shape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            if calculate_distance((y, x), center) < dist:
+                result[y, x] = 1
+    return result
 
-def automated():
-    st.markdown(
-        """
-    Welcome to the demo of [Streamlit Drawable Canvas](https://github.com/andfanilo/streamlit-drawable-canvas).
+def idealFilter_high_pass_filter(dist, image_shape):
+    result = np.ones(image_shape[:2])
+    rows, cols = image_shape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            if calculate_distance((y, x), center) < dist:
+                result[y, x] = 0
+    return result
 
-    On this site, you will find a full use case for this Streamlit component, and answers to some frequently asked questions.
+def butterworth_low_pass_filter(dist, image_shape, n):
+    result = np.zeros(image_shape[:2])
+    rows, cols = image_shape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            result[y, x] = 1 / (1 + (calculate_distance((y, x), center) / dist) ** (2 * n))
+    return result
 
-    :pencil: [Demo source code](https://github.com/andfanilo/streamlit-drawable-canvas-demo/)
-    """
-    )
-    st.image("img/demo.gif")
-    st.markdown(
-        """
-    What you can do with Drawable Canvas:
+def butterworth_high_pass_filter(dist, image_shape, n):
+    result = np.zeros(image_shape[:2])
+    rows, cols = image_shape[:2]
+    center = (rows / 2, cols / 2)
+    for x in range(cols):
+        for y in range(rows):
+            result[y, x] = 1 - 1 / (1 + (calculate_distance((y, x), center) / dist) ** (2 * n))
+    return result
 
-    * Draw freely, lines, circles and boxes on the canvas, with options on stroke & fill
-    * Rotate, skew, scale, move any object of the canvas on demand
-    * Select a background color or image to draw on
-    * Get image data and every drawn object properties back to Streamlit !
-    * Choose to fetch back data in realtime or on demand with a button
-    * Undo, Redo or Drop canvas
-    * Save canvas data as JSON to reuse for another session
-    """
-    )
+def automated_filtering():
+    st.title("Automated Filtering")
+
+    if bg_image is not None:
+        with st.form(key = "form"):
+            isColor = False
+
+            image = Image.open(bg_image)
+            image = image.resize((256, 256))
+            image_arr = np.array(image)
+
+            print("image size: "+str(image_arr.shape))
+            if len(image_arr.shape) == 3:
+                isColor = True
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.text("")
+
+            with col2:
+                st.image(image_arr, use_column_width=False)
+
+            with col3:
+                st.text("")
+
+            filter_option = st.selectbox('Which filter would you like to use?',
+            ('Gaussian Low Pass Filter',
+            'Gaussian High Pass Filter',
+            'Ideal Low Pass Filter',
+            'Ideal High Pass Filter',
+            'Butter Worth Low Pass Filter',
+            'Butter Worth High Pass Filter'))
+
+            if isColor:
+                fft_names = ["img_fft_r.png", "img_fft_g.png", "img_fft_b.png"]
+            else:
+                fft_names = ["img_fft.png"]
+
+            if st.form_submit_button("Perform Filter"):
+
+                if filter_option == "Gaussian Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(0, 3):
+                            mask_result.append(gaussian_low_pass_filter(50,image_arr[:,:,i].shape))
+                    else:
+                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
+                if filter_option == "Gaussian High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(gaussian_high_pass_filter(50,image_arr[:,:,i].shape))
+                    else:
+                        mask_result = gaussian_high_pass_filter(50, image_arr.shape)
+                elif filter_option == "Ideal Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(idealFilter_low_pass_filter(50,image_arr[:,:,i].shape))
+                    else:
+                        mask_result = idealFilter_low_pass_filter(50, image_arr.shape)
+                elif filter_option == "Ideal High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(idealFilter_high_pass_filter(50,image_arr[:,:,i].shape))
+                    else:
+                        mask_result = idealFilter_high_pass_filter(50, image_arr.shape)
+                elif filter_option == "Butter Worth Low Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(butterworth_low_pass_filter(50,image_arr[:,:,i].shape, 1))
+                    else:
+                        mask_result = butterworth_low_pass_filter(50, image_arr.shape, 1)
+                elif filter_option == "Butter Worth High Pass Filter":
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(butterworth_high_pass_filter(50,image_arr[:,:,i].shape, 1))
+                    else:
+                        mask_result = butterworth_high_pass_filter(50, image_arr.shape, 1)
+                else:
+                    if isColor:
+                        mask_result = []
+                        for i in range(3):
+                            mask_result.append(gaussian_low_pass_filter(50,image_arr[:, :, i].shape))
+                    else:
+                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
+
+                color_image_fft = 0
+                image_fft = 0
+                fft_img = 0
+
+                if isColor:
+                    color_image_fft = color_fft(image_arr, isColor)
+                    images_fft = []
+                    for i in range(3):
+                        fft_img_new = color_image_fft[i] * mask_result[i]
+                        images_fft.append(fft_img_new)
+                        
+                    fft_img = color_ifft(images_fft, isColor)
+                else:
+                    image_fft = fft2(image_arr)
+                    multiple_result = image_fft * mask_result
+                    inverse_tranform_img = ifft2(multiple_result)
+                    fft_img = get_magnitude(inverse_tranform_img)
+                    fft_img = post_process_image(fft_img)
+
+                print("tranformed: "+str(fft_img))
+                print("tranformed shape: " + str(fft_img.shape))
+                cv2.imwrite("inverse_tranform_img.png", fft_img)
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.text("")
+
+                with col2:
+                    st.image(fft_img.astype('int'), use_column_width=False)
+
+                with col3:
+                    st.text("")
 
 def create_canvas_draw_instance(background_image, key, height, width):
 
@@ -194,7 +348,6 @@ def create_canvas_draw_instance(background_image, key, height, width):
 
     return canvas_result
 
-
 def color_fft(image, isColor):
     images_fft = []
     if isColor:
@@ -204,7 +357,6 @@ def color_fft(image, isColor):
     else:
         images_fft.append(fft2(image))
     return images_fft
-
 
 def color_ifft(image, isColor):
     images_ifft = []
@@ -219,7 +371,6 @@ def color_ifft(image, isColor):
         resulted_img = np.array(images_ifft[0]).astype('int')
     return resulted_img
 
-
 def fft2(a):
     a = np.asarray(a)
     temp1 = np.zeros(a.shape, complex)
@@ -230,7 +381,6 @@ def fft2(a):
     for c in range(len(a[0])):
         temp2[:, c] = DFT_slow(temp1[:, c])
     return np.rint(temp2)
-
 
 def DFT_slow(x):
     """Compute the discrete Fourier Transform of the 1D array x"""
@@ -253,7 +403,6 @@ def ifft2(a):
         temp2[:, c] = iDFT_slow(temp1[:, c])
     return np.rint(temp2)
 
-
 def iDFT_slow(x):
     """Compute the discrete Fourier Transform of the 1D array x"""
     #x = np.asarray(x, dtype=float)
@@ -268,12 +417,9 @@ def save_img_fft(images, names):
     for image, name in zip(images, names):
         plt.imsave(name, np.log(1 + abs(image)), cmap='gray')
 
-
 def save_fft_edits(image, name):
     for image, name in zip(image, name):
         cv2.imwrite(name, image)
-
-
 
 def get_mask_from_canvas(canvas_images):
     list_mask = []
@@ -281,7 +427,6 @@ def get_mask_from_canvas(canvas_images):
         list_mask.append(image[:, :, 3])
 
     return list_mask
-
 
 def apply_mask(input_image, mask):
     _, mask_thresh = cv2.threshold(mask, 120, 255, cv2.THRESH_BINARY)
@@ -303,7 +448,6 @@ def apply_mask_all(list_images, list_mask):
         final_result.append(result)
     return final_result
 
-
 def post_process_image(image):
     # perform full contrast stretch
     A = np.min(image)
@@ -318,7 +462,6 @@ def post_process_image(image):
 
     return np.array(contrased_image)
 
-
 def get_magnitude( image):
     final_mat = [[0 for i in range(len(image[0]))] for j in range(len(image))]
     real_mat = image.real
@@ -331,11 +474,10 @@ def get_magnitude( image):
 
     return np.array(final_mat)
 
-
 if __name__ == "__main__":
     # st.set_page_config(
     #     page_title="Streamlit Drawable Canvas Demo", page_icon=":pencil2:"
     # )
-    st.title("Drawable Canvas Demo")
+    # st.title("Drawable Canvas Demo")
     st.sidebar.subheader("Configuration")
     main()
