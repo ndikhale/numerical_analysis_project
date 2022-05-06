@@ -174,16 +174,16 @@ def automated():
                     if isColor:
                         mask_result = []
                         for i in range(0, 3):
-                            mask_result.append(gaussian_low_pass_filter(50, image_arr[:, :, i].shape))
+                            mask_result.append(gaussian_low_pass_filter(20, image_arr[:, :, i].shape))
                     else:
-                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
+                        mask_result = gaussian_low_pass_filter(20, image_arr.shape)
                 elif filter_option == "Gaussian High Pass Filter":
                     if isColor:
                         mask_result = []
                         for i in range(3):
-                            mask_result.append(gaussian_high_pass_filter(50, image_arr[:, :, i].shape))
+                            mask_result.append(gaussian_high_pass_filter(20, image_arr[:, :, i].shape))
                     else:
-                        mask_result = gaussian_high_pass_filter(50, image_arr.shape)
+                        mask_result = gaussian_high_pass_filter(20, image_arr.shape)
                 elif filter_option == "Ideal Low Pass Filter":
                     if isColor:
                         mask_result = []
@@ -202,23 +202,23 @@ def automated():
                     if isColor:
                         mask_result = []
                         for i in range(3):
-                            mask_result.append(butterworth_low_pass_filter(50, image_arr[:, :, i].shape, 1))
+                            mask_result.append(butterworth_low_pass_filter(20, image_arr[:, :, i].shape, 1))
                     else:
-                        mask_result = butterworth_low_pass_filter(50, image_arr.shape, 1)
+                        mask_result = butterworth_low_pass_filter(20, image_arr.shape, 1)
                 elif filter_option == "Butter Worth High Pass Filter":
                     if isColor:
                         mask_result = []
                         for i in range(3):
-                            mask_result.append(butterworth_high_pass_filter(50, image_arr[:, :, i].shape, 1))
+                            mask_result.append(butterworth_high_pass_filter(20, image_arr[:, :, i].shape, 1))
                     else:
-                        mask_result = butterworth_high_pass_filter(50, image_arr.shape, 1)
+                        mask_result = butterworth_high_pass_filter(20, image_arr.shape, 1)
                 else:
                     if isColor:
                         mask_result = []
                         for i in range(3):
-                            mask_result.append(gaussian_low_pass_filter(50, image_arr[:, :, i].shape))
+                            mask_result.append(gaussian_low_pass_filter(20, image_arr[:, :, i].shape))
                     else:
-                        mask_result = gaussian_low_pass_filter(50, image_arr.shape)
+                        mask_result = gaussian_low_pass_filter(20, image_arr.shape)
 
                 color_image_fft = 0
                 image_fft = 0
@@ -236,7 +236,7 @@ def automated():
                         fft_img_new = color_image_fft[i] * mask_result[i]
                         images_fft.append(fft_img_new)
 
-                    save_img_fft(images_fft, fft_names_after)
+                    save_img_fft(mask_result, fft_names_after)
                     fft_img = color_ifft(images_fft, isColor)
 
                     cv2.imwrite("inverse_tranform_img.png", fft_img)
@@ -258,15 +258,15 @@ def automated():
                     col1_after_filter, col2_after_filter, col3_filter = st.columns(3)
 
                     with col1_after_filter:
-                        st.text("After Filter Red FFT")
+                        st.text("Masking Filter for Red FFT")
                         st.image(cv2.imread(fft_names_after[0]), use_column_width=False)
 
                     with col2_after_filter:
-                        st.text("After Filter Green FFT")
+                        st.text("Masking Filter for Green FFT")
                         st.image(cv2.imread(fft_names_after[1]), use_column_width=False)
 
                     with col3_filter:
-                        st.text("After Filter Blue FFT")
+                        st.text("Masking Filter for Blue FFT")
                         st.image(cv2.imread(fft_names_after[2]), use_column_width=False)
 
                     col1_final_image, col2_final_image, col3_final_image = st.columns(3)
@@ -276,7 +276,7 @@ def automated():
 
                     with col2_final_image:
                         st.text("Filtered Image")
-                        st.image(fft_img.astype('int'), use_column_width=False)
+                        st.image(fft_img, use_column_width=False)
 
                     with col3_final_image:
                         st.text("")
@@ -291,7 +291,7 @@ def automated():
                     multiple_result = image_fft * mask_result
 
                     after_filter_fft = list()
-                    after_filter_fft.append(multiple_result)
+                    after_filter_fft.append(mask_result)
                     save_img_fft(after_filter_fft, after_fft_names)
 
                     inverse_tranform_img = ifft2(multiple_result)
@@ -304,11 +304,11 @@ def automated():
 
                     with col1:
                         st.text("Before Filter FFT")
-                        st.image(cv2.imread("img_fft.png"), use_column_width=False)
+                        st.image(cv2.imread(fft_names[0]), use_column_width=False)
 
                     with col2:
-                        st.text("After Filter FFT")
-                        st.image(cv2.imread("after_filter_fft.png"), use_column_width=False)
+                        st.text("Masking Filter")
+                        st.image(cv2.imread(after_fft_names[0]), use_column_width=False)
                         
                     with col3:
                         st.text("Filtered Image")
